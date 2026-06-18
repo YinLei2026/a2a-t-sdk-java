@@ -26,6 +26,11 @@
         </dependency>
         <dependency>
             <groupId>net.openan.a2a-t.sdk</groupId>
+            <artifactId>a2a-t-llm</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>net.openan.a2a-t.sdk</groupId>
             <artifactId>a2a-t-prompt</artifactId>
             <version>${project.version}</version>
         </dependency>
