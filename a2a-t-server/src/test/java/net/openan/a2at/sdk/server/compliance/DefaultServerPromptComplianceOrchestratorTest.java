@@ -1,0 +1,112 @@
+package net.openan.a2at.sdk.server.compliance;
+
+import net.openan.a2at.sdk.server.metadata.ServerPromptMetadataExtractor;
+import net.openan.a2at.sdk.server.model.ProcessedPromptMetadata;
+import net.openan.a2at.sdk.server.model.PromptComplianceResult;
+import net.openan.a2at.sdk.server.exception.PromptComplianceCheckException;
+import net.openan.a2at.sdk.server.validation.ServerPromptSemanticValidator;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+
+class DefaultServerPromptComplianceOrchestratorTest {
+
+    @Test
+    void checkTaskPromptReturnsSuccessWhenMetadataExtractionAndValidationPass() {
+        ProcessedPromptMetadata metadata =
+                new ProcessedPromptMetadata("energy_saving", "en-US", "Site: {site}", Map.of("site", "Site A"));
+        RecordingPromptMetadataExtractor extractor = new RecordingPromptMetadataExtractor(metadata);
+        RecordingPromptSemanticValidator validator = new RecordingPromptSemanticValidator(null);
+        DefaultServerPromptComplianceOrchestrator orchestrator =
+                new DefaultServerPromptComplianceOrchestrator(extractor, validator);
+
+        PromptComplianceResult result = orchestrator.checkTaskPrompt("Site: Site A");
+
+        assertTrue(result.success());
+        assertThrows(NoSuchMethodException.class, () -> PromptComplianceResult.class.getMethod("metadata"));
+        assertEquals(null, result.failure());
+        assertEquals("Site: Site A", extractor.lastProcessedPromptText);
+        assertEquals("Site: Site A", validator.lastProcessedPromptText);
+        assertEquals(metadata, validator.lastMetadata);
+    }
+
+    @Test
+    void checkTaskPromptReturnsFailureWhenMetadataExtractionFails() {
+        DefaultServerPromptComplianceOrchestrator orchestrator = new DefaultServerPromptComplianceOrchestrator(
+                new RecordingPromptMetadataExtractor(new PromptComplianceCheckException(
+                        "processed_prompt_parse_error", "Prompt does not match any known template.", "prompt_parse")),
+                new RecordingPromptSemanticValidator(null));
+
+        PromptComplianceResult result = orchestrator.checkTaskPrompt("Unknown");
+
+        assertEquals(false, result.success());
+        assertEquals("processed_prompt_parse_error", result.failure().code());
+        assertEquals("prompt_parse", result.failure().stage());
+    }
+
+    @Test
+    void checkTaskPromptReturnsFailureWhenSemanticValidationFails() {
+        ProcessedPromptMetadata metadata =
+                new ProcessedPromptMetadata("energy_saving", "en-US", "Site: {site}", Map.of("site", "Site A"));
+        DefaultServerPromptComplianceOrchestrator orchestrator = new DefaultServerPromptComplianceOrchestrator(
+                new RecordingPromptMetadataExtractor(metadata),
+                new RecordingPromptSemanticValidator(new PromptComplianceCheckException(
+                        "slot_validation_error",
+                        "Prompt is not semantically consistent with extracted slots.",
+                        "slot_validation")));
+
+        PromptComplianceResult result = orchestrator.checkTaskPrompt("Site: Site A");
+
+        assertEquals(false, result.success());
+        assertEquals("slot_validation_error", result.failure().code());
+        assertEquals("slot_validation", result.failure().stage());
+    }
+
+    private static final class RecordingPromptMetadataExtractor implements ServerPromptMetadataExtractor {
+        private final ProcessedPromptMetadata metadata;
+        private final PromptComplianceCheckException exception;
+        private String lastProcessedPromptText;
+
+        private RecordingPromptMetadataExtractor(ProcessedPromptMetadata metadata) {
+            this.metadata = metadata;
+            this.exception = null;
+        }
+
+        private RecordingPromptMetadataExtractor(PromptComplianceCheckException exception) {
+            this.metadata = null;
+            this.exception = exception;
+        }
+
+        @Override
+        public ProcessedPromptMetadata extract(String processedPromptText) {
+            this.lastProcessedPromptText = processedPromptText;
+            if (exception != null) {
+                throw exception;
+            }
+            return metadata;
+        }
+    }
+
+    private static final class RecordingPromptSemanticValidator implements ServerPromptSemanticValidator {
+        private final PromptComplianceCheckException exception;
+        private String lastProcessedPromptText;
+        private ProcessedPromptMetadata lastMetadata;
+
+        private RecordingPromptSemanticValidator(PromptComplianceCheckException exception) {
+            this.exception = exception;
+        }
+
+        @Override
+        public void validate(String processedPromptText, ProcessedPromptMetadata metadata) {
+            this.lastProcessedPromptText = processedPromptText;
+            this.lastMetadata = metadata;
+            if (exception != null) {
+                throw exception;
+            }
+        }
+    }
+}
