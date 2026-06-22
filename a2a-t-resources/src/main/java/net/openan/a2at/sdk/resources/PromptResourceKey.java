@@ -51,9 +51,9 @@ public record PromptResourceKey(String category, String subject, String language
      */
     public String relativePath() {
         if ("scenarios".equals(category)) {
-            return String.join(File.separator, "prompt_resources", category, language, fileName);
+            return String.join("/", "prompt_resources", category, language, fileName);
         }
-        return String.join(File.separator, "prompt_resources", category, subject, language, fileName);
+        return String.join("/", "prompt_resources", category, subject, language, fileName);
     }
 
     private static void validateSegment(String fieldName, String value) {
